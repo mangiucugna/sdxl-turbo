@@ -37,12 +37,10 @@ t2i_pipe = AutoPipelineForText2Image.from_pretrained(
     variant="fp16" if torch_dtype == torch.float16 else "fp32",
 )
 
-
 t2i_pipe.to(device=torch_device, dtype=torch_dtype).to(device)
 t2i_pipe.set_progress_bar_config(disable=True)
 i2i_pipe.to(device=torch_device, dtype=torch_dtype).to(device)
 i2i_pipe.set_progress_bar_config(disable=True)
-
 
 def resize_crop(image, size=512):
     image = image.convert("RGB")
@@ -52,29 +50,27 @@ def resize_crop(image, size=512):
 
 
 async def predict(init_image, prompt, strength, steps, seed=1231231):
+    generator = torch.manual_seed(seed)
+    last_time = time.time()
     if init_image is not None:
         init_image = resize_crop(init_image)
-        generator = torch.manual_seed(seed)
-        last_time = time.time()
         results = i2i_pipe(
             prompt=prompt,
             image=init_image,
             generator=generator,
             num_inference_steps=steps,
-            guidance_scale=0.0,
+            guidance_scale=0.0, # Disable guidance scale as per model card
             strength=strength,
             width=512,
             height=512,
             output_type="pil",
         )
     else:
-        generator = torch.manual_seed(seed)
-        last_time = time.time()
         results = t2i_pipe(
             prompt=prompt,
             generator=generator,
             num_inference_steps=steps,
-            guidance_scale=0.0,
+            guidance_scale=0.0, # Disable guidance scale as per model card
             width=512,
             height=512,
             output_type="pil",
@@ -103,7 +99,6 @@ css = """
 }
 """
 with gr.Blocks(css=css) as demo:
-    init_image_state = gr.State()
     with gr.Column(elem_id="container"):
         gr.Markdown(
             """# SDXL Turbo Image to Image/Text to Image
@@ -138,7 +133,7 @@ with gr.Blocks(css=css) as demo:
                         step=0.001,
                     )
                     steps = gr.Slider(
-                        label="Steps", value=2, minimum=1, maximum=10, step=1
+                        label="Steps", value=2, minimum=1, maximum=4, step=1 # Max steps 4 as per model card
                     )
                     seed = gr.Slider(
                         randomize=True,
@@ -151,17 +146,6 @@ with gr.Blocks(css=css) as demo:
         inputs = [image_input, prompt, strength, steps, seed]
         generate_bt.click(fn=predict, inputs=inputs, outputs=image, show_progress=True)
         prompt.submit(fn=predict, inputs=inputs, outputs=image, show_progress=True)
-        # prompt.input(fn=predict, inputs=inputs, outputs=image, show_progress=False)
-        # steps.change(fn=predict, inputs=inputs, outputs=image, show_progress=False)
-        # seed.change(fn=predict, inputs=inputs, outputs=image, show_progress=False)
-        # strength.change(fn=predict, inputs=inputs, outputs=image, show_progress=False)
-        image_input.change(
-            fn=lambda x: x,
-            inputs=image_input,
-            outputs=init_image_state,
-            show_progress=False,
-            queue=False,
-        )
 
-demo.queue()
-demo.launch()
+if __name__ == "__main__":
+  demo.launch(show_error=True)
